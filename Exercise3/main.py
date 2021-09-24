@@ -27,6 +27,56 @@ def cifar10_color(X):
     return resizedImages
 
 
+def cifar_10_bayes_learn(Xf, Y):
+    print("learning in cifar_10_bayes_learn")
+
+    # Dict where labels are keys and values are their RGB values
+    # e.g. { 0 : [[Red values], [Green values], [Blue values]] }
+    #      { 1 : [[Red values], [Green values], [Blue values]] }
+    meanValues = {}
+    for i in range(0, 10):
+        meanValues[i] = [[], [], []]
+    # add colours to correct labels
+    for index, image in enumerate(Xf):
+        label = Y[index]
+        meanValues[label][0].append(image[0])
+        meanValues[label][1].append(image[1])
+        meanValues[label][2].append(image[2])
+
+    # calculate covariances
+    covariances = []
+    for index in range(0, 10):
+        valuesRGB = meanValues[index]
+        valuesRGB = np.asarray(valuesRGB)
+        covariances.append(np.cov(valuesRGB))
+
+
+    # calculate means and replace color arrays with them
+    for label in range(0, 10):
+        meanValues[label][0] = np.mean(meanValues[label][0])
+        meanValues[label][1] = np.mean(meanValues[label][1])
+        meanValues[label][2] = np.mean(meanValues[label][2])
+
+    # priors, index = label
+    labelFrequency = sorted((Counter(Y)).items())
+    priors = []
+    for label in labelFrequency:
+        priors.append(label[1])
+    priors = np.divide(priors, len(Xf))
+
+    print("learning done\n")
+    return meanValues, covariances, priors
+
+
+def cifar10_classifier_bayes(x, mu, sigma, p):
+    classProbabilities = []
+    for i in range(0, 10):
+        norm = sc.multivariate_normal.pdf(x, mu[i], sigma[i])
+        classProb = norm * p[i]
+        classProbabilities.append(classProb)
+    return np.argmax(classProbabilities)
+
+
 # Xp 1x1x3 images, Y labels
 def cifar_10_naivebayes_learn(Xp, Y):
     print("learning in cifar_10_naivebayes_learn")
@@ -105,31 +155,6 @@ def class_acc(pred, qt):
     return accuracy
 
 
-def cifar10_classifier_random(x):
-    possibleLabels = 10
-    return randrange(0, possibleLabels)
-
-
-def cifar10_classifier_1nn(x, trdata, trlabels):
-    trainingSamples = trdata[0:50000]
-    trainingSampleLabels = trlabels[0:50000]
-
-    # go through training data and compare all to x(test image)
-    smallestDistance = 1000000000000
-    x = x.astype('int')
-    for index, sample in enumerate(trainingSamples):
-        sample = sample.astype('int')
-        temp = np.subtract(x, sample)
-        temp = np.power(temp, 2)
-        totalEuclideanDistance = np.sum(temp)
-
-        if (totalEuclideanDistance < smallestDistance):
-            smallestDistance = totalEuclideanDistance
-            bestMatch = index
-
-    return trainingSampleLabels[bestMatch]
-
-
 def unpickle(file):
     with open(file, 'rb') as f:
         dict = pickle.load(f, encoding="latin1")
@@ -152,29 +177,34 @@ trainingLabels4 = unpickle('cifar-10-batches-py/data_batch_4')["labels"]
 trainingLabels5 = unpickle('cifar-10-batches-py/data_batch_5')["labels"]
 trainingLabels = np.concatenate((trainingLabels1, trainingLabels2, trainingLabels3, trainingLabels4, trainingLabels5))
 
-# testing data
-trainingDataforTesting = unpickle('cifar-10-batches-py/test_batch')
+testingData = unpickle('cifar-10-batches-py/test_batch')
 
-# 1nn
-usedTestData = 0  # give number between 1-10000
-predLabels = []
-for testSample in trainingDataforTesting["data"][0:usedTestData]:
-    predictedLabel = cifar10_classifier_1nn(testSample, trainingData, trainingLabels)
-    predLabels.append(predictedLabel)
-accuracy = class_acc(predLabels, trainingDataforTesting["labels"][0:usedTestData])
-print(f"Task 4 1nn accuracy: {accuracy}% with 50 000 training data and {usedTestData} testing data\n")
+# Used data sizes
+usedTestImages = 10000  # 1-10000
+usedTrainingImages = 50000
 
-# Task 1 - Bayesian classifier (good)
-usedTestImages = 1000
-images1x1 = cifar10_color(trainingData)
-testImages1x1 = cifar10_color(trainingDataforTesting["data"][0:usedTestImages])
+# resize images to 1x1 for Tasks 1&2
+trainingImages1x1 = cifar10_color(trainingData[0:usedTrainingImages])
+testImages1x1 = cifar10_color(testingData["data"][0:usedTestImages])
 
-means, variances, priors = cifar_10_naivebayes_learn(images1x1, trainingLabels)
+# parameters for naive bayes and bayes
+means, variances, priors = cifar_10_naivebayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
+meansB, covariances, priorsB = cifar_10_bayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
 
-predictedLabels = []
+# calculate predicted labels
+print("calculating labels")
+predLabelsNaive = []
+predLabelsBayes = []
 for testImage in testImages1x1:
-    predLabel = cifar10_classifier_naivebayes(testImage, means, variances, priors)
-    predictedLabels.append(predLabel)
-accuracy = class_acc(predictedLabels, trainingDataforTesting["labels"][0:usedTestImages])
-print(f"bayes naive accuracy with {usedTestImages} test images: {accuracy}%")
+    predLabelsNaive.append(cifar10_classifier_naivebayes(testImage, means, variances, priors))
+    predLabelsBayes.append(cifar10_classifier_bayes(testImage, meansB, covariances, priorsB))
+
+# calculate accuracies
+accuracyNaive = class_acc(predLabelsNaive, testingData["labels"][0:usedTestImages])
+accuracyBayes = class_acc(predLabelsBayes, testingData["labels"][0:usedTestImages])
+
+print(f"bayes naive accuracy with {usedTestImages} test images: {accuracyNaive}%")
+print(f"bayes accuracy with {usedTestImages} test images: {accuracyBayes}%\n")
+
+
 
