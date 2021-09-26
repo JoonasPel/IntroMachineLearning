@@ -2,16 +2,35 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from random import randrange
-from skimage import transform
+from skimage import transform, img_as_ubyte
 from PIL import Image
 from collections import Counter
 import scipy.stats as sc
 import math
 
 
+def cifar10_2x2_color(X):
+    print(f"resizing {len(X)} images: 32x32 -> 2x2")
+
+    resizedImages = []
+    for image in X:
+        reshapedIMG = image.reshape(3, 32, 32).transpose(1, 2, 0)
+        resizedIMG = img_as_ubyte(transform.resize(reshapedIMG, (2, 2)))
+        # "extracting" colors to own arrays
+        reds = [item[0] for item in resizedIMG[0]] + [item[0] for item in resizedIMG[1]]
+        greens = [item[1] for item in resizedIMG[0]] + [item[1] for item in resizedIMG[1]]
+        blues = [item[2] for item in resizedIMG[0]] + [item[1] for item in resizedIMG[1]]
+        resizedImages.append(np.concatenate((reds, greens, blues)))
+    # convert array to ndarray
+    resizedImages = np.asarray(resizedImages)
+
+    print("resizing done\n")
+    return resizedImages
+
+
 # rescales images from 32x32 to 1x1
 def cifar10_color(X):
-    print(f"resizing {len(X)} images")
+    print(f"resizing {len(X)} images: 32x32 -> 1x1")
 
     resizedImages = []
     for image in X:
@@ -30,18 +49,22 @@ def cifar10_color(X):
 def cifar_10_bayes_learn(Xf, Y):
     print("learning in cifar_10_bayes_learn")
 
-    # Dict where labels are keys and values are their RGB values
-    # e.g. { 0 : [[Red values], [Green values], [Blue values]] }
-    #      { 1 : [[Red values], [Green values], [Blue values]] }
+    # Dict where labels are keys and values are arrays with colours inside them
+    # Arrays inside one key/label are equal to images pixel size * 3 (e.g. 2x2*3 = 12)
+    #
+    pixels = Xf[0].size // 3  # how many pixels in images, 1x1=1, 2x2=4, ...
     meanValues = {}
     for i in range(0, 10):
-        meanValues[i] = [[], [], []]
+        meanValues[i] = []
+        for j in range(0, pixels * 3):
+            meanValues[i].append([])
     # add colours to correct labels
     for index, image in enumerate(Xf):
         label = Y[index]
-        meanValues[label][0].append(image[0])
-        meanValues[label][1].append(image[1])
-        meanValues[label][2].append(image[2])
+        for x in range(0, pixels):
+            meanValues[label][x].append(image[x])  # Red
+            meanValues[label][x + pixels].append(image[x + pixels])  # Green
+            meanValues[label][x + (2 * pixels)].append(image[x + 2 * pixels])  # Blue
 
     # calculate covariances
     covariances = []
@@ -53,9 +76,8 @@ def cifar_10_bayes_learn(Xf, Y):
 
     # calculate means and replace color arrays with them
     for label in range(0, 10):
-        meanValues[label][0] = np.mean(meanValues[label][0])
-        meanValues[label][1] = np.mean(meanValues[label][1])
-        meanValues[label][2] = np.mean(meanValues[label][2])
+        for x in range(0, pixels * 3):
+            meanValues[label][x] = np.mean(meanValues[label][x])
 
     # priors, index = label
     labelFrequency = sorted((Counter(Y)).items())
@@ -71,7 +93,7 @@ def cifar_10_bayes_learn(Xf, Y):
 def cifar10_classifier_bayes(x, mu, sigma, p):
     classProbabilities = []
     for i in range(0, 10):
-        norm = sc.multivariate_normal.pdf(x, mu[i], sigma[i])
+        norm = sc.multivariate_normal.pdf(x, mu[i], sigma[i], allow_singular=True)
         classProb = norm * p[i]
         classProbabilities.append(classProb)
     return np.argmax(classProbabilities)
@@ -187,24 +209,38 @@ usedTrainingImages = 50000
 trainingImages1x1 = cifar10_color(trainingData[0:usedTrainingImages])
 testImages1x1 = cifar10_color(testingData["data"][0:usedTestImages])
 
-# parameters for naive bayes and bayes
-means, variances, priors = cifar_10_naivebayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
-meansB, covariances, priorsB = cifar_10_bayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
+# resize images to 2x2 for Task 3
+trainingImages2x2 = cifar10_2x2_color(trainingData[0:usedTrainingImages])
+testImages2x2 = cifar10_2x2_color(testingData["data"][0:usedTestImages])
 
-# calculate predicted labels
-print("calculating labels")
-predLabelsNaive = []
-predLabelsBayes = []
-for testImage in testImages1x1:
-    predLabelsNaive.append(cifar10_classifier_naivebayes(testImage, means, variances, priors))
-    predLabelsBayes.append(cifar10_classifier_bayes(testImage, meansB, covariances, priorsB))
+# parameters for naive bayes 1x1, bayes 1x1 and bayes 2x2
+means, variances, priors = cifar_10_naivebayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
+meansB, covariancesB, priorsB = cifar_10_bayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
+meansC, covariancesC, priorsC = cifar_10_bayes_learn(trainingImages2x2, trainingLabels[0:usedTrainingImages])
+
+# calculate predicted labels 1x1
+print("calculating predicted labels 1x1")
+predLabelsNaive1x1 = []
+predLabelsBayes1x1 = []
+for Image1x1 in testImages1x1:
+    predLabelsNaive1x1.append(cifar10_classifier_naivebayes(Image1x1, means, variances, priors))
+    predLabelsBayes1x1.append(cifar10_classifier_bayes(Image1x1, meansB, covariancesB, priorsB))
+
+# calculate predicted labels 2x2
+print("calculating predicted labels 2x2\n")
+predLabelsBayes2x2 = []
+for Image2x2 in testImages2x2:
+    predLabelsBayes2x2.append(cifar10_classifier_bayes(Image2x2, meansC, covariancesC, priorsC))
 
 # calculate accuracies
-accuracyNaive = class_acc(predLabelsNaive, testingData["labels"][0:usedTestImages])
-accuracyBayes = class_acc(predLabelsBayes, testingData["labels"][0:usedTestImages])
+accuracyNaive1x1 = class_acc(predLabelsNaive1x1, testingData["labels"][0:usedTestImages])
+accuracyBayes1x1 = class_acc(predLabelsBayes1x1, testingData["labels"][0:usedTestImages])
+accuracyBayes2x2 = class_acc(predLabelsBayes2x2, testingData["labels"][0:usedTestImages])
 
-print(f"bayes naive accuracy with {usedTestImages} test images: {accuracyNaive}%")
-print(f"bayes accuracy with {usedTestImages} test images: {accuracyBayes}%\n")
+print(f"1x1 bayes naive accuracy with {usedTestImages} test images: {accuracyNaive1x1}%")
+print(f"1x1 bayes accuracy with {usedTestImages} test images: {accuracyBayes1x1}%\n")
+print(f"2x2 bayes accuracy with {usedTestImages} test images: {accuracyBayes2x2}%\n")
+
 
 
 
