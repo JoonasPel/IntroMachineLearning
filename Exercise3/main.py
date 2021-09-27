@@ -8,23 +8,23 @@ from collections import Counter
 import scipy.stats as sc
 import math
 
-
-def cifar10_2x2_color(X):
-    print(f"resizing {len(X)} images: 32x32 -> 2x2")
+def cifar10_WxW_color(X, width):
+    print(f"resizing {len(X)} images: 32x32 -> {width}x{width}")
 
     resizedImages = []
     for image in X:
         reshapedIMG = image.reshape(3, 32, 32).transpose(1, 2, 0)
-        resizedIMG = img_as_ubyte(transform.resize(reshapedIMG, (2, 2)))
-        # "extracting" colors to own arrays
-        reds = [item[0] for item in resizedIMG[0]] + [item[0] for item in resizedIMG[1]]
-        greens = [item[1] for item in resizedIMG[0]] + [item[1] for item in resizedIMG[1]]
-        blues = [item[2] for item in resizedIMG[0]] + [item[1] for item in resizedIMG[1]]
+        resizedIMG = img_as_ubyte(transform.resize(reshapedIMG, (width, width), anti_aliasing=True))
+        # "extracting" colors to own arrays, better solution needed for performance
+        reds, greens, blues = [], [], []
+        for row in resizedIMG:
+            for column in row:
+                reds.append(column[0])
+                greens.append(column[1])
+                blues.append(column[2])
         resizedImages.append(np.concatenate((reds, greens, blues)))
     # convert array to ndarray
     resizedImages = np.asarray(resizedImages)
-
-    print("resizing done\n")
     return resizedImages
 
 
@@ -41,8 +41,6 @@ def cifar10_color(X):
         resizedImages.append([meanR, meanG, meanB])
     # convert array to ndarray
     resizedImages = np.asarray(resizedImages)
-
-    print("resizing done\n")
     return resizedImages
 
 
@@ -64,14 +62,14 @@ def cifar_10_bayes_learn(Xf, Y):
         for x in range(0, pixels):
             meanValues[label][x].append(image[x])  # Red
             meanValues[label][x + pixels].append(image[x + pixels])  # Green
-            meanValues[label][x + (2 * pixels)].append(image[x + 2 * pixels])  # Blue
+            meanValues[label][x + (2 * pixels)].append(image[x + (2 * pixels)])  # Blue
 
     # calculate covariances
     covariances = []
     for index in range(0, 10):
         valuesRGB = meanValues[index]
         valuesRGB = np.asarray(valuesRGB)
-        covariances.append(np.cov(valuesRGB))
+        covariances.append(np.cov(valuesRGB, dtype=np.longfloat))
 
 
     # calculate means and replace color arrays with them
@@ -86,7 +84,6 @@ def cifar_10_bayes_learn(Xf, Y):
         priors.append(label[1])
     priors = np.divide(priors, len(Xf))
 
-    print("learning done\n")
     return meanValues, covariances, priors
 
 
@@ -139,7 +136,6 @@ def cifar_10_naivebayes_learn(Xp, Y):
         priors.append(label[1])
     priors = np.divide(priors, len(Xp))
 
-    print("learning done\n")
     return meanValues, varianceValues, priors
 
 
@@ -202,44 +198,51 @@ trainingLabels = np.concatenate((trainingLabels1, trainingLabels2, trainingLabel
 testingData = unpickle('cifar-10-batches-py/test_batch')
 
 # Used data sizes
-usedTestImages = 10000  # 1-10000
-usedTrainingImages = 50000
+usedTestImages = 100  # 1-10000
+usedTrainingImages = 1000
 
 # resize images to 1x1 for Tasks 1&2
 trainingImages1x1 = cifar10_color(trainingData[0:usedTrainingImages])
 testImages1x1 = cifar10_color(testingData["data"][0:usedTestImages])
 
-# resize images to 2x2 for Task 3
-trainingImages2x2 = cifar10_2x2_color(trainingData[0:usedTrainingImages])
-testImages2x2 = cifar10_2x2_color(testingData["data"][0:usedTestImages])
-
-# parameters for naive bayes 1x1, bayes 1x1 and bayes 2x2
+# parameters for naive bayes 1x1 and bayes 1x1
 means, variances, priors = cifar_10_naivebayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
 meansB, covariancesB, priorsB = cifar_10_bayes_learn(trainingImages1x1, trainingLabels[0:usedTrainingImages])
-meansC, covariancesC, priorsC = cifar_10_bayes_learn(trainingImages2x2, trainingLabels[0:usedTrainingImages])
 
 # calculate predicted labels 1x1
-print("calculating predicted labels 1x1")
-predLabelsNaive1x1 = []
-predLabelsBayes1x1 = []
+predLabelsNaive1x1, predLabelsBayes1x1 = [], []
+accuracyData = []  # for graph
 for Image1x1 in testImages1x1:
     predLabelsNaive1x1.append(cifar10_classifier_naivebayes(Image1x1, means, variances, priors))
     predLabelsBayes1x1.append(cifar10_classifier_bayes(Image1x1, meansB, covariancesB, priorsB))
 
-# calculate predicted labels 2x2
-print("calculating predicted labels 2x2\n")
-predLabelsBayes2x2 = []
-for Image2x2 in testImages2x2:
-    predLabelsBayes2x2.append(cifar10_classifier_bayes(Image2x2, meansC, covariancesC, priorsC))
-
 # calculate accuracies
 accuracyNaive1x1 = class_acc(predLabelsNaive1x1, testingData["labels"][0:usedTestImages])
 accuracyBayes1x1 = class_acc(predLabelsBayes1x1, testingData["labels"][0:usedTestImages])
-accuracyBayes2x2 = class_acc(predLabelsBayes2x2, testingData["labels"][0:usedTestImages])
 
 print(f"1x1 bayes naive accuracy with {usedTestImages} test images: {accuracyNaive1x1}%")
-print(f"1x1 bayes accuracy with {usedTestImages} test images: {accuracyBayes1x1}%\n")
-print(f"2x2 bayes accuracy with {usedTestImages} test images: {accuracyBayes2x2}%\n")
+print(f"1x1 bayes accuracy with {usedTestImages} test images: {accuracyBayes1x1}%")
+accuracyData.append(accuracyBayes1x1)
+
+# Task 3
+tests = [2, 3, 4, 5, 6, 7, 8]  # test these pixel sizes. 2 mean 2x2 etc.
+for W in tests:
+    trainingImagesWxW = cifar10_WxW_color(trainingData[0:usedTrainingImages], W)
+    testImagesWxW = cifar10_WxW_color(testingData["data"][0:usedTestImages], W)
+    means, covariances, priors = cifar_10_bayes_learn(trainingImagesWxW, trainingLabels[0:usedTrainingImages])
+    predLabels = []
+    for testImage in testImagesWxW:
+        predLabels.append(cifar10_classifier_bayes(testImage, means, covariances, priors))
+    accuracyBayesWxW = class_acc(predLabels, testingData["labels"][0:usedTestImages])
+    accuracyData.append(accuracyBayesWxW)
+    print(f"{W}x{W} bayes accuracy with {usedTestImages} test images: {accuracyBayesWxW}%")
+
+# draw  graph for accuracies
+x = [1, 2, 3, 4, 5, 6, 7, 8]
+customNames = ['1x1', '2x2', '3x3', '4x4', '5x5', '6x6', '7x7', '8x8']
+plt.xticks(x, customNames)
+plt.plot(x, accuracyData, marker='o')
+plt.show()
 
 
 
