@@ -15,9 +15,9 @@ def neural(trImages, trLabels, testImages, testLabels):
     trImages = trImages / 255.0
     testImages = testImages / 255.0
     # convert labels (0-9) to one-hots. e.g. 4 -> [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
-    trOneHot = np.zeros((trLabels.size, trLabels.max() + 1), dtype='float32')
+    trOneHot = np.zeros((trLabels.size, np.unique(trLabels).size), dtype='float32')
     trOneHot[np.arange(trLabels.size), trLabels] = 1
-    testOneHot = np.zeros((testLabels.size, testLabels.max() + 1), dtype='float32')
+    testOneHot = np.zeros((testLabels.size, np.unique(testLabels).size), dtype='float32')
     testOneHot[np.arange(testLabels.size), testLabels] = 1
 
     # define model and layers
@@ -32,7 +32,7 @@ def neural(trImages, trLabels, testImages, testLabels):
     model.add(Dense(32, activation='relu'))
     model.add(Dropout(0.4))
     # output layer
-    model.add(Dense(10, activation='sigmoid'))
+    model.add(Dense(2, activation='sigmoid'))
 
     opt = keras.optimizers.SGD(learning_rate=lr)
     model.compile(optimizer=opt,
@@ -41,7 +41,7 @@ def neural(trImages, trLabels, testImages, testLabels):
     model.summary()
     # fitting stopped early if X epochs in a row dont make val_loss smaller
     earlyStop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
-    hist = model.fit(trImages, trOneHot, epochs=numEpochs, validation_split=0.1, shuffle=True,
+    hist = model.fit(trImages, trOneHot, epochs=numEpochs, validation_split=0.05, shuffle=True,
                      callbacks=[earlyStop], verbose=1)
 
     # graphs for training/validation accuracy and loss
@@ -112,8 +112,30 @@ testingData = unpickle('cifar-10-batches-py/test_batch')["data"]
 testingLabels = unpickle('cifar-10-batches-py/test_batch')["labels"]
 testingLabels = np.asarray(testingLabels)
 
+# New arrays with images with only label 0 or 1
+label0, label1 = 0, 1
+newTrainingData, newTrainingLabels, newTestingData, newTestingLabels = [], [], [], []
+for idx, val in enumerate(trainingData):
+    label = trainingLabels[idx]
+    if(label == label0 or label == label1):
+        newTrainingData.append(val)
+        newTrainingLabels.append(label)
+for idx, val in enumerate(testingData):
+    label = testingLabels[idx]
+    if(label == label0 or label == label1):
+        newTestingData.append(val)
+        newTestingLabels.append(label)
+newTrainingData = np.asarray(newTrainingData)
+newTrainingLabels = np.asarray(newTrainingLabels)
+newTestingData = np.asarray(newTestingData)
+newTestingLabels = np.asarray(newTestingLabels)
+
+
 # Used data sizes
-usedTestImages = 10000  # 1-10000
-usedTrainingImages = 50000
-neural(trainingData[0:usedTrainingImages], trainingLabels[0:usedTrainingImages],
-       testingData[0:usedTestImages], testingLabels[0:usedTestImages])
+# usedTestImages = 10000  # 1-10000
+# usedTrainingImages = 50000
+# neural(trainingData[0:usedTrainingImages], trainingLabels[0:usedTrainingImages],
+#        testingData[0:usedTestImages], testingLabels[0:usedTestImages])
+
+neural(newTrainingData[0:10000], newTrainingLabels[0:10000],
+       newTestingData[0:2000], newTestingLabels[0:2000])
