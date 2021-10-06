@@ -22,12 +22,15 @@ def neural(trImages, trLabels, testImages, testLabels):
 
     # define model and layers
     model = Sequential()
-    numEpochs = 60
-    lr = 0.1
-    # model.add(Conv2D(32, (5, 5), input_shape=(32, 32, 3), activation='relu'))
-    # model.add(Conv2D(16, (3, 3), input_shape=(32, 32, 3), activation='relu'))
-    model.add(Flatten(input_shape=(32, 32, 3)))
-    model.add(Dense(128, activation='relu'))
+    numEpochs = 50
+    lr = 0.04
+    model.add(Conv2D(64, kernel_size=(5, 5), input_shape=(32, 32, 3), activation='relu'))
+    model.add(Conv2D(32, kernel_size=(3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.4))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dropout(0.4))
     # output layer
     model.add(Dense(10, activation='sigmoid'))
 
@@ -36,9 +39,24 @@ def neural(trImages, trLabels, testImages, testLabels):
                   loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
     model.summary()
-    hist = model.fit(trImages, trOneHot, epochs=numEpochs, verbose=1)
+    # fitting stopped early if X epochs in a row dont make val_loss smaller
+    earlyStop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+    hist = model.fit(trImages, trOneHot, epochs=numEpochs, validation_split=0.1, shuffle=True,
+                     callbacks=[earlyStop], verbose=1)
 
+    # graphs for training/validation accuracy and loss
+    plt.subplot(1, 2, 1)
+    plt.plot(hist.history['accuracy'])
+    plt.plot(hist.history['val_accuracy'])
+    plt.legend(['train', 'val'], loc='upper left')
+    plt.ylabel('accuracy')
+    plt.xlabel('epoch')
+    plt.axhline(y=0.6, xmin=0, xmax=100, color='black')
+
+    plt.subplot(1, 2, 2)
     plt.plot(hist.history['loss'])
+    plt.plot(hist.history['val_loss'])
+    plt.legend(['train', 'val'], loc='upper left')
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.show()
