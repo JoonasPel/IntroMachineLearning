@@ -2,9 +2,10 @@ import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Flatten, Conv2D, Dropout, MaxPooling2D, AveragePooling2D
-import keras
+from tensorflow.python.keras.layers import *
+from tensorflow.python.keras.models import *
+from tensorflow.python.keras.losses import CategoricalCrossentropy
+from keras import callbacks, optimizers, preprocessing
 
 
 def neural(trImages, trLabels, testImages, testLabels):
@@ -19,14 +20,33 @@ def neural(trImages, trLabels, testImages, testLabels):
     trOneHot[np.arange(trLabels.size), trLabels] = 1
     testOneHot = np.zeros((testLabels.size, np.unique(testLabels).size), dtype='float32')
     testOneHot[np.arange(testLabels.size), testLabels] = 1
+    # Take(remove) last 5% of training images and use them as validation images
+    valShare = 0.05
+    splitRatio = int(round(trImages.shape[0] * (1-valShare)))
+    trImages, valImages = np.split(trImages, [splitRatio])
+    trLabels, valLabels = np.split(trOneHot, [splitRatio])
 
-    # model and parameters
-    model = Sequential()
-    numEpochs = 200  # doesnt actually matter because EarlyStop
+    # Data augmentation, used with training images (trImages) only
+    dataGen = preprocessing.image.ImageDataGenerator(
+        #featurewise_center=True,
+        #featurewise_std_normalization=True,
+        #rotation_range=20,
+        #fill_mode='nearest',
+        #width_shift_range=0.2,
+        #height_shift_range=0.2,
+        horizontal_flip=True,
+        #vertical_flip=True,
+        #brightness_range=[0.4, 1.5],
+        #validation_split=0.2
+    )
+
+    # learning parameters
+    numEpochs = 200  # doesnt probably matter because EarlyStop
     lr = 0.005
     patience = 10
-
+    batchSize = 32
     #####################################################################################
+    model = Sequential()
     model.add(Conv2D(32, kernel_size=(5, 5), input_shape=(32, 32, 3), activation='relu'))
     model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
     model.add(Conv2D(32, kernel_size=(5, 5), activation='relu'))
@@ -37,15 +57,17 @@ def neural(trImages, trLabels, testImages, testLabels):
     model.add(Dense(10, activation='sigmoid'))  # output layer
     #####################################################################################
 
-    opt = keras.optimizers.SGD(learning_rate=lr)
-    model.compile(optimizer=opt,
-                  loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
+    model.compile(optimizer=optimizers.SGD(lr=lr),
+                  loss=CategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
     model.summary()
     # fitting stopped early if X epochs in a row dont make val_loss smaller
-    earlyStop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience)
-    hist = model.fit(trImages, trOneHot, epochs=numEpochs, validation_split=0.05, shuffle=True,
-                     callbacks=[earlyStop], verbose=1)
+    earlyStop = callbacks.EarlyStopping(monitor='val_loss', patience=patience)
+    hist = model.fit(dataGen.flow(trImages, trLabels, batch_size=batchSize, shuffle=True),
+                     epochs=numEpochs,
+                     validation_data=(valImages, valLabels),
+                     callbacks=[earlyStop],
+                     verbose=1)
 
     # graphs for training/validation accuracy and loss
     plt.subplot(1, 2, 1)
