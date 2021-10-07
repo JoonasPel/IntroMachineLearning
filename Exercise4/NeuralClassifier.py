@@ -20,19 +20,22 @@ def neural(trImages, trLabels, testImages, testLabels):
     testOneHot = np.zeros((testLabels.size, np.unique(testLabels).size), dtype='float32')
     testOneHot[np.arange(testLabels.size), testLabels] = 1
 
-    # define model and layers
+    # model and parameters
     model = Sequential()
-    numEpochs = 50
-    lr = 0.04
-    model.add(Conv2D(64, kernel_size=(5, 5), input_shape=(32, 32, 3), activation='relu'))
-    model.add(Conv2D(32, kernel_size=(3, 3), activation='relu'))
+    numEpochs = 200  # doesnt actually matter because EarlyStop
+    lr = 0.005
+    patience = 10
+
+    #####################################################################################
+    model.add(Conv2D(32, kernel_size=(5, 5), input_shape=(32, 32, 3), activation='relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
+    model.add(Conv2D(32, kernel_size=(5, 5), activation='relu'))
+    model.add(AveragePooling2D(pool_size=(2, 2), strides=2))
     model.add(Flatten())
-    model.add(Dense(64, activation='relu'))
+    model.add(Dense(200, activation='relu'))
     model.add(Dropout(0.4))
-    model.add(Dense(32, activation='relu'))
-    model.add(Dropout(0.4))
-    # output layer
-    model.add(Dense(2, activation='sigmoid'))
+    model.add(Dense(10, activation='sigmoid'))  # output layer
+    #####################################################################################
 
     opt = keras.optimizers.SGD(learning_rate=lr)
     model.compile(optimizer=opt,
@@ -40,7 +43,7 @@ def neural(trImages, trLabels, testImages, testLabels):
                   metrics=['accuracy'])
     model.summary()
     # fitting stopped early if X epochs in a row dont make val_loss smaller
-    earlyStop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+    earlyStop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience)
     hist = model.fit(trImages, trOneHot, epochs=numEpochs, validation_split=0.05, shuffle=True,
                      callbacks=[earlyStop], verbose=1)
 
@@ -51,7 +54,7 @@ def neural(trImages, trLabels, testImages, testLabels):
     plt.legend(['train', 'val'], loc='upper left')
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.axhline(y=0.6, xmin=0, xmax=100, color='black')
+    plt.axhline(y=0.72, xmin=0, xmax=100, color='black')
 
     plt.subplot(1, 2, 2)
     plt.plot(hist.history['loss'])
@@ -130,12 +133,11 @@ newTrainingLabels = np.asarray(newTrainingLabels)
 newTestingData = np.asarray(newTestingData)
 newTestingLabels = np.asarray(newTestingLabels)
 
-
 # Used data sizes
-# usedTestImages = 10000  # 1-10000
-# usedTrainingImages = 50000
-# neural(trainingData[0:usedTrainingImages], trainingLabels[0:usedTrainingImages],
-#        testingData[0:usedTestImages], testingLabels[0:usedTestImages])
+usedTestImages = 10000  # 1-10000
+usedTrainingImages = 50000
+neural(trainingData[0:usedTrainingImages], trainingLabels[0:usedTrainingImages],
+       testingData[0:usedTestImages], testingLabels[0:usedTestImages])
 
-neural(newTrainingData[0:10000], newTrainingLabels[0:10000],
-       newTestingData[0:2000], newTestingLabels[0:2000])
+# neural(newTrainingData[0:10000], newTrainingLabels[0:10000],
+#        newTestingData[0:2000], newTestingLabels[0:2000])
