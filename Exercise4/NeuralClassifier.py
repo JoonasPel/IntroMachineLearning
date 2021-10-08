@@ -8,6 +8,36 @@ from tensorflow.python.keras.losses import CategoricalCrossentropy
 from keras import callbacks, optimizers, preprocessing
 
 
+# Stores 10 latest validation accuracies DURING training.
+# Used to decrease lr if val_acc doesnt improve
+class AccuracyHistory(callbacks.Callback):
+    def on_train_begin(self, logs=None):
+        self.acc = []  # Store validation accuracies here
+        self.epochsSinceChange = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        # keep 10 LATEST validation accuracies in list. FIFO
+        valAcc = logs.get('val_accuracy')
+        self.acc.append(valAcc)
+        self.acc = self.acc[-10:]
+
+    def lrChanger(self, epoch, lr):
+        # check if the biggest validation accuracy is in the latest 5 of 10 accuracies.
+        # if not, lower learning rate.
+        # epochsSinceChange is used to not allow lr change too fast
+        if len(self.acc) != 10:
+            return lr
+        maxIndex = np.argmax(self.acc)
+        print(f"Epochs since best val acc: {9-maxIndex}. learning rate: {lr}")
+        if maxIndex < 5 and self.epochsSinceChange > 2:
+            self.epochsSinceChange = 0
+            print("DECREASING LEARNING RATE")
+            return lr * 0.5
+        else:
+            self.epochsSinceChange += 1
+            return lr
+
+
 def neural(trImages, trLabels, testImages, testLabels):
     # reshape vectors of 3072 to 32x32x3 images
     trImages = trImages.reshape(len(trImages), 3, 32, 32).transpose(0, 2, 3, 1)
@@ -28,23 +58,19 @@ def neural(trImages, trLabels, testImages, testLabels):
 
     # Data augmentation, used with training images (trImages) only
     dataGen = preprocessing.image.ImageDataGenerator(
-        #featurewise_center=True,
-        #featurewise_std_normalization=True,
-        #rotation_range=20,
-        #fill_mode='nearest',
-        #width_shift_range=0.2,
-        #height_shift_range=0.2,
         horizontal_flip=True,
         #vertical_flip=True,
-        #brightness_range=[0.4, 1.5],
-        #validation_split=0.2
+        #width_shift_range=0.2,
+        #height_shift_range=0.2,
+        #brightness_range=[0.5, 1.0],
     )
 
     # learning parameters
-    numEpochs = 200  # doesnt probably matter because EarlyStop
-    lr = 0.005
-    patience = 10
+    numEpochs = 300  # might not matter because EarlyStop
+    learningRate = 0.1  # decreased during training
+    patience = 20
     batchSize = 32
+    # Magic:
     #####################################################################################
     model = Sequential()
     model.add(Conv2D(32, kernel_size=(5, 5), input_shape=(32, 32, 3), activation='relu'))
@@ -57,16 +83,18 @@ def neural(trImages, trLabels, testImages, testLabels):
     model.add(Dense(10, activation='sigmoid'))  # output layer
     #####################################################################################
 
-    model.compile(optimizer=optimizers.SGD(lr=lr),
+    model.compile(optimizer=optimizers.SGD(lr=learningRate),
                   loss=CategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
     model.summary()
     # fitting stopped early if X epochs in a row dont make val_loss smaller
-    earlyStop = callbacks.EarlyStopping(monitor='val_loss', patience=patience)
+    earlyStop = callbacks.EarlyStopping(monitor='val_accuracy', patience=patience)
+    accHis = AccuracyHistory()
+    lrScheduler = tf.keras.callbacks.LearningRateScheduler(accHis.lrChanger)
     hist = model.fit(dataGen.flow(trImages, trLabels, batch_size=batchSize, shuffle=True),
                      epochs=numEpochs,
                      validation_data=(valImages, valLabels),
-                     callbacks=[earlyStop],
+                     callbacks=[earlyStop, lrScheduler, accHis],
                      verbose=1)
 
     # graphs for training/validation accuracy and loss
@@ -76,7 +104,7 @@ def neural(trImages, trLabels, testImages, testLabels):
     plt.legend(['train', 'val'], loc='upper left')
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.axhline(y=0.72, xmin=0, xmax=100, color='black')
+    plt.axhline(y=0.73, xmin=0, xmax=100, color='black')
 
     plt.subplot(1, 2, 2)
     plt.plot(hist.history['loss'])
@@ -89,26 +117,6 @@ def neural(trImages, trLabels, testImages, testLabels):
     # calculate accuracy with test images
     print("test data accuracy:")
     loss, acc = model.evaluate(testImages, testOneHot, verbose=2)
-
-
-# returns classification accuracy(%) of provided labels
-def class_acc(pred, qt):
-    # check for empty or different sized lists, return -1 if error found
-    if (len(pred) == 0 or len(qt) == 0):
-        return -1
-    elif (len(pred) != len(qt)):
-        return -1
-
-    correct = 0
-    wrong = 0
-    for i in range(0, len(pred)):
-        if pred[i] == qt[i]:
-            correct += 1
-        else:
-            wrong += 1
-
-    accuracy = correct / (correct + wrong) * 100
-    return accuracy
 
 
 def unpickle(file):
