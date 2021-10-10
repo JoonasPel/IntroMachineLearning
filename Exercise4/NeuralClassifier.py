@@ -115,14 +115,41 @@ def neural(trImages, trLabels, testImages, testLabels):
     plt.show()
 
     # calculate accuracy with test images
-    print("test data accuracy:")
+    # done with model.evaluare and also "manually" with class_acc. These should be same.
+    print("\ntest data accuracy with model.evaluate:")
     loss, acc = model.evaluate(testImages, testOneHot, verbose=2)
+
+    predictsOneHot = model.predict(testImages)
+    predictLabels = np.argmax(predictsOneHot, axis=-1)
+    accuracy = class_acc(predictLabels, testLabels)
+    print(f"\ntest data accuracy with model.predict + class_acc:\n {accuracy}%")
+
 
 
 def unpickle(file):
     with open(file, 'rb') as f:
         dict = pickle.load(f, encoding="latin1")
     return dict
+
+
+# returns classification accuracy(%) of provided labels
+def class_acc(pred, qt):
+    # check for empty or different sized lists, return -1 if error found
+    if (len(pred) == 0 or len(qt) == 0):
+        return -1
+    elif (len(pred) != len(qt)):
+        return -1
+
+    correct = 0
+    wrong = 0
+    for i in range(0, len(pred)):
+        if pred[i] == qt[i]:
+            correct += 1
+        else:
+            wrong += 1
+
+    accuracy = correct / (correct + wrong) * 100
+    return accuracy
 
 
 # combine all training data to one ndarray
