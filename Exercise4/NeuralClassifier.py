@@ -11,65 +11,62 @@ from keras import callbacks, optimizers, preprocessing
 # Stores 10 latest validation accuracies DURING training.
 # Used to decrease lr if val_acc doesnt improve
 class AccuracyHistory(callbacks.Callback):
-    def on_train_begin(self, logs=None):
+    def __init__(self):
+        super().__init__()
         self.acc = []  # Store validation accuracies here
-        self.epochsSinceChange = 0
+        self.epochs_since_change = 0
 
     def on_epoch_end(self, epoch, logs=None):
         # keep 10 LATEST validation accuracies in list. FIFO
-        valAcc = logs.get('val_accuracy')
-        self.acc.append(valAcc)
+        val_acc = logs.get('val_accuracy')
+        self.acc.append(val_acc)
         self.acc = self.acc[-10:]
 
-    def lrChanger(self, epoch, lr):
+    def lr_changer(self, epoch, lr):
         # check if the biggest validation accuracy is in the latest 5 of 10 accuracies.
         # if not, lower learning rate.
         # epochsSinceChange is used to not allow lr change too fast
         if len(self.acc) != 10:
             return lr
-        maxIndex = np.argmax(self.acc)
-        print(f"Epochs since best val acc: {9-maxIndex}. learning rate: {lr}")
-        if maxIndex < 5 and self.epochsSinceChange > 2:
-            self.epochsSinceChange = 0
+        max_index = np.argmax(self.acc)
+        print(f"Epochs since best val acc: {9 - max_index}. learning rate: {lr}")
+        if max_index < 5 and self.epochs_since_change > 2:
+            self.epochs_since_change = 0
             print("DECREASING LEARNING RATE")
             return lr * 0.5
         else:
-            self.epochsSinceChange += 1
+            self.epochs_since_change += 1
             return lr
 
 
-def neural(trImages, trLabels, testImages, testLabels):
+def neural(tr_images, tr_labels, test_images, test_labels):
     # reshape vectors of 3072 to 32x32x3 images
-    trImages = trImages.reshape(len(trImages), 3, 32, 32).transpose(0, 2, 3, 1)
-    testImages = testImages.reshape(len(testImages), 3, 32, 32).transpose(0, 2, 3, 1)
+    tr_images = tr_images.reshape(len(tr_images), 3, 32, 32).transpose(0, 2, 3, 1)
+    test_images = test_images.reshape(len(test_images), 3, 32, 32).transpose(0, 2, 3, 1)
     # scale values to 0-1
-    trImages = trImages / 255.0
-    testImages = testImages / 255.0
+    tr_images = tr_images / 255.0
+    test_images = test_images / 255.0
     # convert labels (0-9) to one-hots. e.g. 4 -> [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
-    trOneHot = np.zeros((trLabels.size, np.unique(trLabels).size), dtype='float32')
-    trOneHot[np.arange(trLabels.size), trLabels] = 1
-    testOneHot = np.zeros((testLabels.size, np.unique(testLabels).size), dtype='float32')
-    testOneHot[np.arange(testLabels.size), testLabels] = 1
+    tr_one_hot = np.zeros((tr_labels.size, np.unique(tr_labels).size), dtype='float32')
+    tr_one_hot[np.arange(tr_labels.size), tr_labels] = 1
+    test_one_hot = np.zeros((test_labels.size, np.unique(test_labels).size), dtype='float32')
+    test_one_hot[np.arange(test_labels.size), test_labels] = 1
     # Take(remove) last 5% of training images and use them as validation images
-    valShare = 0.05
-    splitRatio = int(round(trImages.shape[0] * (1-valShare)))
-    trImages, valImages = np.split(trImages, [splitRatio])
-    trLabels, valLabels = np.split(trOneHot, [splitRatio])
+    val_share = 0.05
+    split_ratio = int(round(tr_images.shape[0] * (1 - val_share)))
+    tr_images, val_images = np.split(tr_images, [split_ratio])
+    tr_labels, val_labels = np.split(tr_one_hot, [split_ratio])
 
-    # Data augmentation, used with training images (trImages) only
-    dataGen = preprocessing.image.ImageDataGenerator(
+    # Data augmentation, used with training images (tr_images) only
+    data_gen = preprocessing.image.ImageDataGenerator(
         horizontal_flip=True,
-        #vertical_flip=True,
-        #width_shift_range=0.2,
-        #height_shift_range=0.2,
-        #brightness_range=[0.5, 1.0],
     )
 
     # learning parameters
-    numEpochs = 300  # might not matter because EarlyStop
-    learningRate = 0.1  # decreased during training
-    patience = 20
-    batchSize = 32
+    num_epochs = 300  # might not matter because EarlyStop
+    learning_rate = 0.1  # decreased during training
+    patience = 10
+    batch_size = 32
     # Magic:
     #####################################################################################
     model = Sequential()
@@ -83,18 +80,18 @@ def neural(trImages, trLabels, testImages, testLabels):
     model.add(Dense(10, activation='sigmoid'))  # output layer
     #####################################################################################
 
-    model.compile(optimizer=optimizers.SGD(lr=learningRate),
+    model.compile(optimizer=optimizers.SGD(lr=learning_rate),
                   loss=CategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
     model.summary()
-    # fitting stopped early if X epochs in a row dont make val_loss smaller
-    earlyStop = callbacks.EarlyStopping(monitor='val_accuracy', patience=patience)
-    accHis = AccuracyHistory()
-    lrScheduler = tf.keras.callbacks.LearningRateScheduler(accHis.lrChanger)
-    hist = model.fit(dataGen.flow(trImages, trLabels, batch_size=batchSize, shuffle=True),
-                     epochs=numEpochs,
-                     validation_data=(valImages, valLabels),
-                     callbacks=[earlyStop, lrScheduler, accHis],
+    # fitting stopped early if X epochs in a row don't make val_loss smaller
+    early_stop = callbacks.EarlyStopping(monitor='val_accuracy', patience=patience)
+    acc_his = AccuracyHistory()
+    lr_scheduler = tf.keras.callbacks.LearningRateScheduler(acc_his.lr_changer)
+    hist = model.fit(data_gen.flow(tr_images, tr_labels, batch_size=batch_size, shuffle=True),
+                     epochs=num_epochs,
+                     validation_data=(val_images, val_labels),
+                     callbacks=[early_stop, lr_scheduler, acc_his],
                      verbose=1)
 
     # graphs for training/validation accuracy and loss
@@ -104,7 +101,6 @@ def neural(trImages, trLabels, testImages, testLabels):
     plt.legend(['train', 'val'], loc='upper left')
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.axhline(y=0.73, xmin=0, xmax=100, color='black')
 
     plt.subplot(1, 2, 2)
     plt.plot(hist.history['loss'])
@@ -115,15 +111,14 @@ def neural(trImages, trLabels, testImages, testLabels):
     plt.show()
 
     # calculate accuracy with test images
-    # done with model.evaluare and also "manually" with class_acc. These should be same.
+    # done with model.evaluate and also "manually" with class_acc.
     print("\ntest data accuracy with model.evaluate:")
-    loss, acc = model.evaluate(testImages, testOneHot, verbose=2)
+    model.evaluate(test_images, test_one_hot, verbose=2)
 
-    predictsOneHot = model.predict(testImages)
-    predictLabels = np.argmax(predictsOneHot, axis=-1)
-    accuracy = class_acc(predictLabels, testLabels)
+    predicts_one_hot = model.predict(test_images)
+    predict_labels = np.argmax(predicts_one_hot, axis=-1)
+    accuracy = class_acc(predict_labels, test_labels)
     print(f"\ntest data accuracy with model.predict + class_acc:\n {accuracy}%")
-
 
 
 def unpickle(file):
@@ -135,9 +130,9 @@ def unpickle(file):
 # returns classification accuracy(%) of provided labels
 def class_acc(pred, qt):
     # check for empty or different sized lists, return -1 if error found
-    if (len(pred) == 0 or len(qt) == 0):
+    if len(pred) == 0 or len(qt) == 0:
         return -1
-    elif (len(pred) != len(qt)):
+    elif len(pred) != len(qt):
         return -1
 
     correct = 0
@@ -172,29 +167,8 @@ testingData = unpickle('cifar-10-batches-py/test_batch')["data"]
 testingLabels = unpickle('cifar-10-batches-py/test_batch')["labels"]
 testingLabels = np.asarray(testingLabels)
 
-# New arrays with images with only label 0 or 1
-label0, label1 = 0, 1
-newTrainingData, newTrainingLabels, newTestingData, newTestingLabels = [], [], [], []
-for idx, val in enumerate(trainingData):
-    label = trainingLabels[idx]
-    if(label == label0 or label == label1):
-        newTrainingData.append(val)
-        newTrainingLabels.append(label)
-for idx, val in enumerate(testingData):
-    label = testingLabels[idx]
-    if(label == label0 or label == label1):
-        newTestingData.append(val)
-        newTestingLabels.append(label)
-newTrainingData = np.asarray(newTrainingData)
-newTrainingLabels = np.asarray(newTrainingLabels)
-newTestingData = np.asarray(newTestingData)
-newTestingLabels = np.asarray(newTestingLabels)
-
 # Used data sizes
-usedTestImages = 10000  # 1-10000
-usedTrainingImages = 50000
-neural(trainingData[0:usedTrainingImages], trainingLabels[0:usedTrainingImages],
-       testingData[0:usedTestImages], testingLabels[0:usedTestImages])
-
-# neural(newTrainingData[0:10000], newTrainingLabels[0:10000],
-#        newTestingData[0:2000], newTestingLabels[0:2000])
+used_test_images = 10000  # 1-10000
+used_training_images = 50000
+neural(trainingData[0:used_training_images], trainingLabels[0:used_training_images],
+       testingData[0:used_test_images], testingLabels[0:used_test_images])
