@@ -2,4 +2,6 @@
 /shelf/
 **/workspace.xml
 *.PNG
+*.png
 **/cifar-10-batches-py/
+
