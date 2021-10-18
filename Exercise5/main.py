@@ -8,7 +8,7 @@ import time
 env = gym.make("Taxi-v3").env
 
 # Training parameters for Q learning
-alpha = 1.0  # Learning rate .WAS 0.9
+alpha = 0.9  # Learning rate
 gamma = 0.9  # Future reward discount factor
 num_of_episodes = 500
 num_of_steps = 500  # per each episode
@@ -24,7 +24,9 @@ for episode in range(0, num_of_episodes):
     for step in range(0, num_of_steps):
         random_action = random.randrange(0, 6)
         new_state, reward, done, info = env.step(random_action)
-        Q_reward[old_state][random_action] = reward + gamma * np.amax(Q_reward[new_state])
+        Q_old = Q_reward[old_state][random_action]  # Q(S,A)
+        max_a = np.amax(Q_reward[new_state])  # MAXa Q(S', a)
+        Q_reward[old_state][random_action] = Q_old + alpha * (reward + gamma * max_a - Q_old)
         old_state = new_state
         if done:
             break
